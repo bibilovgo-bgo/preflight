@@ -1,0 +1,22 @@
+[project]
+name = "preflight-guards"
+version = "0.1.0"
+description = "Preflight checks for Claude Code tool calls (Claude Code plugin)."
+requires-python = ">=3.9"
+license = "Apache-2.0"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["repo_files", "repo_settings", "git_commands", "secret_patterns", "_common", "shell_words", "edit_guard", "safety_guard", "secret_scan", "browser_guard", "clone_scan", "findings", "repo_scan", "repo_git", "repo_fixtures", "conftest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["guards"]
+addopts = "-q"

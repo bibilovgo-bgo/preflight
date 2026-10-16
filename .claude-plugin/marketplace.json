@@ -1,0 +1,15 @@
+{
+  "name": "bibilovgo",
+  "owner": {
+    "name": "Georgiy Bibilov",
+    "url": "https://github.com/bibilovgo-bgo"
+  },
+  "description": "Claude Code plugins by Georgiy Bibilov.",
+  "plugins": [
+    {
+      "name": "preflight",
+      "source": "./",
+      "description": "Preflight checks for Claude Code tool calls: drifted Edit anchors, destructive commands, secrets in commits."
+    }
+  ]
+}
