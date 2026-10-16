@@ -120,8 +120,8 @@ def test_session_files_live_three_days():
     os.utime(old, (two_days, two_days))
     bg.save("new", 1.0)
     assert old.exists()
-    four_days = time.time() - 4 * 24 * 3600
-    os.utime(old, (four_days, four_days))
+    three_and_a_half_days = time.time() - 3.5 * 24 * 3600  # past three days, short of four
+    os.utime(old, (three_and_a_half_days, three_and_a_half_days))
     bg.save("newer", 1.0)
     assert not old.exists()
 
@@ -139,6 +139,7 @@ def test_clip_limits_and_spaces():
     assert len(clip("x" * 500)) == 160
     assert clip("x" * 20, 20) == "x" * 20
     assert clip("  a    b  ") == "a b"
+    assert clip("a  b") == "a b"
     assert len(finding(HIGH, "p" * 300, "w").path) == 120
 
 
@@ -154,7 +155,9 @@ def test_json_that_is_not_an_object(tmp_path):
     assert "not an object" in found[0].what
 
 
-@pytest.mark.parametrize(("count", "noted"), [(MAX_WALK, False), (MAX_WALK + 1, True)])
+@pytest.mark.parametrize(
+    ("count", "noted"), [(MAX_WALK, False), (MAX_WALK + 1, True), (MAX_WALK + 5, True)]
+)
 def test_walk_cap_boundary(tmp_path, count, noted):
     root = fx.make_clean(tmp_path / "w")
     hooks = root / ".claude/hooks"

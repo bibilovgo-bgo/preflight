@@ -112,7 +112,7 @@ def check_mcp(root: Path) -> list[Finding]:
     for name, spec in servers.items():
         spec = spec if isinstance(spec, dict) else {}
         args = spec.get("args") if isinstance(spec.get("args"), list) else []
-        run = " ".join([str(spec.get("command", "")), *(str(a) for a in args)]).strip()
+        run = " ".join([str(spec.get("command", "")), *(str(a) for a in args)])  # clip() trims
         level = HIGH if ATTACK.search(run) else MEDIUM
         found.append(
             finding(level, ".mcp.json", f"MCP server {name}: {run or spec.get('url', '')}")

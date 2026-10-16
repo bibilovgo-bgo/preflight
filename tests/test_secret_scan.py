@@ -543,8 +543,8 @@ def test_secret_anywhere_in_a_long_line_is_found(offset):
 WITH_ZERO = [
     ("AIza" + "a0" * 17 + "a", "Google API key"),
     ("AKIA" + "A0" * 8, "AWS access key id"),
-    ("npm_" + "a0" * 18, "npm token"),
-    ("fl_live_" + "a0" * 6, "Stripe file link"),
+    ("npm_" + "a0" * 9 + "b9" * 9, "npm token"),
+    ("fl_live_" + "a0a9" * 3, "Stripe file link"),
     ("sk-1" + "a" * 19, "sk- API key"),
     ("s3://user:S3cret1@bucket", "password in a URL"),  # pragma: allowlist secret
 ]
@@ -559,8 +559,9 @@ def test_patterns_accept_zero_digits_and_short_schemes(value, label):
 @pytest.mark.parametrize(
     ("line", "counts"),
     [
-        ('token = "ABCD1234EFGH5678"', True),  # all-caps key without an underscore  pragma: allowlist secret
-        ('token = "API_KEY_V2_NAME1"', False),  # an env var name  pragma: allowlist secret
+        # all-caps key without an underscore
+        ('token = "ABCD1234EFGH5678"', True),  # pragma: allowlist secret
+        ('token = "API_KEY_V9_NAME9"', False),  # an env var name  pragma: allowlist secret
         ('secret_path = "/run/s3crets/db1"', False),  # a path
         ("token_file = '.config/app1.yml'", False),  # a relative path
     ],
