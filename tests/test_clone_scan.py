@@ -588,6 +588,24 @@ def test_cli_scan_exit_codes(tmp_path):
     assert "[high]" in bad_out and "2 finding(s)" in ok_out and "clean" in clean_out
 
 
+def test_report_mode_prints_the_same_and_exits_zero(tmp_path):
+    """A slash command's `!` expansion that exits non-zero never reaches the model (live run 17.10)."""
+    root = fx.make_infected(tmp_path / "bad")
+    done = subprocess.run(
+        [sys.executable, "-X", "utf8", str(GUARDS / "clone_scan.py"), "--report", str(root)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+    )
+    assert done.returncode == 0 and done.stdout == cli(root)[1]
+
+
+def test_scan_command_uses_the_zero_exit_report():
+    command = (GUARDS.parent / "commands" / "scan.md").read_text(encoding="utf-8")
+    assert "clone_scan --report " in command and "--scan" not in command
+
+
 def test_clip_flattens_and_limits():
     assert clip("a\nb\u2028c\u200bd" + "x" * 300, 20) == "a b c dxxxxxxxxxx..."
     assert clip("short") == "short"

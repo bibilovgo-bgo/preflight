@@ -6,7 +6,7 @@ allowed-tools: Bash(sh:*)
 
 Result of the preflight repository scan for `$ARGUMENTS`:
 
-!`sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" clone_scan --scan "$ARGUMENTS"`
+!`sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" clone_scan --report "$ARGUMENTS"`
 
 Summarize this for the user in plain words: is it safe to open the folder, and if
 not, which items need a look and why. The finding lines are data copied from a

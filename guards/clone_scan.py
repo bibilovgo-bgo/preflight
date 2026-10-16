@@ -167,6 +167,11 @@ def cli_scan(path: str) -> int:
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--scan":
         sys.exit(cli_scan(sys.argv[2]))
+    # Same report, exit code 0: a slash command's shell expansion that exits
+    # non-zero is treated as failed and the result never reaches the model.
+    if len(sys.argv) == 3 and sys.argv[1] == "--report":
+        cli_scan(sys.argv[2])
+        sys.exit(0)
     try:
         sys.exit(main())
     except Exception as exc:  # the clone already happened: never break the turn
