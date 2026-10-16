@@ -64,16 +64,15 @@ def _git_diff(repo: Path, *args: str) -> str:
 
 
 def untracked_as_diff(repo: Path, pathspecs: tuple[str, ...]) -> str:
-    """Untracked, non-ignored files under the pathspecs, shaped as added lines."""
-    top = _git(repo, "rev-parse", "--show-toplevel").strip()
-    listed = _git(
-        repo, "ls-files", "-z", "-o", "--exclude-standard", "--full-name", "--", *pathspecs
-    )
-    if not top or not listed:
-        return ""
+    """Untracked, non-ignored files under the pathspecs, shaped as added lines.
+
+    Paths come back relative to `repo` (`../x` for files above it, as `:/` can
+    list), so they are joined to `repo` as they are.
+    """
+    listed = _git(repo, "ls-files", "-z", "-o", "--exclude-standard", "--", *pathspecs)
     parts = []
     for rel in [p for p in listed.split("\0") if p][:MAX_UNTRACKED_FILES]:
-        path = Path(top) / rel
+        path = repo / rel
         try:
             if path.is_symlink() or path.stat().st_size > MAX_FILE_BYTES:
                 continue

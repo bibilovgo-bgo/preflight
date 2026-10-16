@@ -1,8 +1,8 @@
 """What a secret looks like, and how added lines are read out of a diff.
 
-Every pattern is linear in the line length, and long lines are scanned in
-overlapping windows: one minified or generated line must not push the guard
-past the hook timeout, because a timed-out guard lets the commit through.
+Every pattern is linear in the line length (bounded lookaheads, no leading
+`\\w*`): one minified or generated line must not push the guard past the hook
+timeout, because a timed-out guard lets the commit through.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ import re
 from findings import clip
 
 PRAGMA = "pragma: allowlist secret"
-WINDOW, OVERLAP = 4000, 300
 
 PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("Anthropic API key", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}")),
@@ -83,7 +82,9 @@ def plausible(value: str) -> bool:
     are names, not secrets), must not be an env var name (`OPENAI_API_KEY`),
     a path or a module path.
     """
-    if re.fullmatch(r"[A-Z0-9_]+", value) or value.startswith(("/", ".")):
+    # An env var name has an underscore (`API_KEY_V2`); an all-caps random
+    # string without one (`ABCD1234EFGH5678`) can be a real key.
+    if re.fullmatch(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+", value) or value.startswith(("/", ".")):
         return False
     return bool(re.search(r"\d", value) and re.search(r"[A-Za-z]", value))
 
@@ -114,14 +115,6 @@ def added_lines(diff: str) -> list[tuple[str, str]]:
     return out
 
 
-def windows(line: str) -> list[str]:
-    """The line itself, or overlapping slices of it when it is very long."""
-    if len(line) <= WINDOW:
-        return [line]
-    step = WINDOW - OVERLAP
-    return [line[i : i + WINDOW] for i in range(0, len(line) - OVERLAP, step)]
-
-
 def mask(value: str) -> str:
     return value[:4] + "..." + f"({len(value)} chars)"
 
@@ -135,11 +128,10 @@ def _counts(label: str, m: re.Match) -> bool:
 
 def first_match(line: str) -> tuple[str, str] | None:
     """(label, matched text) of the first real-looking secret in the line."""
-    for part in windows(line):
-        for label, pattern in PATTERNS:
-            for m in pattern.finditer(part):
-                if _counts(label, m):
-                    return label, m.group(0)
+    for label, pattern in PATTERNS:
+        for m in pattern.finditer(line):
+            if _counts(label, m):
+                return label, m.group(0)
     return None
 
 

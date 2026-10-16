@@ -531,10 +531,78 @@ def test_secret_deep_in_a_long_line_is_found():
     assert sp.find_secrets(one_line_diff(line))
 
 
-def test_secret_on_a_window_boundary_is_found():
-    for offset in range(sp.WINDOW - 60, sp.WINDOW + 5, 7):
-        line = "x" * offset + " " + KEY + " " + "y" * 9000
-        assert sp.find_secrets(one_line_diff(line)), offset
+@pytest.mark.parametrize("offset", [0, 3_990, 100_000])
+def test_secret_anywhere_in_a_long_line_is_found(offset):
+    line = "x" * offset + " " + KEY + " " + "y" * 9000
+    assert sp.find_secrets(one_line_diff(line))
+
+
+# --- holes found by the mutation run after the reviews --------------------------
+
+# A zero inside the value: a mutant that turns `[0-9...]` into `[1-9...]` must fail.
+WITH_ZERO = [
+    ("AIza" + "a0" * 17 + "a", "Google API key"),
+    ("AKIA" + "A0" * 8, "AWS access key id"),
+    ("npm_" + "a0" * 18, "npm token"),
+    ("fl_live_" + "a0" * 6, "Stripe file link"),
+    ("sk-1" + "a" * 19, "sk- API key"),
+    ("s3://user:S3cret1@bucket", "password in a URL"),  # pragma: allowlist secret
+]
+
+
+@pytest.mark.parametrize(("value", "label"), WITH_ZERO)
+def test_patterns_accept_zero_digits_and_short_schemes(value, label):
+    hits = sp.find_secrets(one_line_diff(value))
+    assert len(hits) == 1 and f": {label} " in hits[0]
+
+
+@pytest.mark.parametrize(
+    ("line", "counts"),
+    [
+        ('token = "ABCD1234EFGH5678"', True),  # all-caps key without an underscore  pragma: allowlist secret
+        ('token = "API_KEY_V2_NAME1"', False),  # an env var name  pragma: allowlist secret
+        ('secret_path = "/run/s3crets/db1"', False),  # a path
+        ("token_file = '.config/app1.yml'", False),  # a relative path
+    ],
+)
+def test_plausible_value_rules(line, counts):
+    assert bool(sp.find_secrets(one_line_diff(line))) is counts
+
+
+def test_secret_file_name_hit_is_clipped():
+    path = "d" * 300 + "/.env"
+    hit = sp.find_secrets(one_line_diff("x = 1", path))[0]
+    assert len(hit.split(": ", 1)[0]) == 200
+
+
+def test_add_args_respects_double_dash_and_value_options():
+    assert gc.add_args(["--", "-weird.py"]) == ["-weird.py"]
+    assert gc.add_args(["--chmod", "+x", "run.sh"]) == ["run.sh"]
+    assert gc.add_args(["-A"]) == [gc.ALL]
+
+
+def test_only_cmd_takes_a_slash_c_wrapper():
+    assert gc._wrapped(["ls", "/c", "git commit -m x"]) is None
+    assert gc._wrapped(["cmd", "/c", "git", "commit"]) == ("git commit", True)
+
+
+@pytest.mark.parametrize(("wraps", "found"), [(3, 1), (4, 0)])
+def test_wrapping_depth_boundary(tmp_path, wraps, found):
+    command = "git commit -m x"
+    for _ in range(wraps):
+        command = "bash -c " + json.dumps(command)
+    assert len(gc.find_commits(command, tmp_path, powershell=False)) == found
+
+
+def test_large_untracked_file_is_skipped(repo):
+    untracked(repo, "big.py", LINE + "\n" + "x = 1\n" * 200_000)
+    assert scan_code(repo, "git add -A && git commit -m x") == 0
+
+
+def test_add_from_a_subdirectory_scans_untracked_files_above_it(repo):
+    (repo / "sub").mkdir()
+    untracked(repo, "leak.py", LINE)
+    assert scan_code(repo / "sub", "git add -A && git commit -m x") == 2
 
 
 def test_hostile_file_name_is_flattened_in_the_message():

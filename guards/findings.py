@@ -87,6 +87,7 @@ def hidden_chars(text: str) -> int:
     part of ordinary spelling.
     """
     text = FLAG_SEQUENCE.sub("", text)
-    if RTL_LETTER.search(text):
+    # The marks sit inside the Arabic block themselves: look for letters without them.
+    if RTL_LETTER.search(RTL_MARKS.sub("", text)):
         text = RTL_MARKS.sub("", text)
     return len(INVISIBLE.findall(text))

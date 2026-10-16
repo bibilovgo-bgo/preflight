@@ -73,9 +73,8 @@ def is_wait(kind: str, tool_input: dict) -> bool:
     return kind == "computer" and tool_input.get("action") == "wait"
 
 
-def premature_read(kind: str, last_nav: float, now: float) -> str:
-    if kind not in READERS or not last_nav:
-        return ""
+def premature_read(last_nav: float, now: float) -> str:
+    """A read this soon after a load (`last_nav` 0 means settled: the gap is huge)."""
     gap = now - last_nav
     if gap >= settle_seconds():
         return ""
@@ -139,7 +138,7 @@ def walk(tool_name: str, tool_input: dict, last_nav: float, now: float) -> tuple
             if navigated_here:
                 problems.append(BATCH_NO_WAIT.format(kind=kind))
             else:
-                problems.append(premature_read(kind, last_nav, now))
+                problems.append(premature_read(last_nav, now))
         problems.append(unguarded_dom(kind, params))
         if navigates(kind, params):
             navigated_here, last_nav = True, now
@@ -153,8 +152,9 @@ def load(session: str) -> float:
     if path is None:
         return 0.0
     try:
-        return float(json.loads(path.read_text(encoding="utf-8")).get("last_navigation_at") or 0)
-    except (OSError, ValueError, TypeError, AttributeError):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return float(data.get("last_navigation_at") or 0) if isinstance(data, dict) else 0.0
+    except (OSError, ValueError, TypeError):
         return 0.0
 
 
