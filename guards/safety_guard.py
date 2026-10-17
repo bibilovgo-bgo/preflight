@@ -56,7 +56,8 @@ _END = r"['\"]?(?=[\s;&|)]|$)"
 _SYSTEM = r"/(?:bin|boot|dev|etc|home|lib\w*|opt|root|sbin|srv|usr|var|Users|System)"
 # Starts of a catastrophic target; each one is non-empty on its own.
 _BASE = r"~|\$HOME|\$\{HOME\}|\.{1,2}|" + _SYSTEM + r"|/[a-zA-Z]|[A-Za-z]:"
-RISKY = r"(?<!\S)['\"]?(?:(?:" + _BASE + r")[/\\]?\*?|/\*?|\*)" + _END
+# The quote may close before the tail: `"$HOME"/*` is the idiomatic `$HOME/*`.
+RISKY = r"(?<!\S)['\"]?(?:(?:" + _BASE + r")['\"]?[/\\]?\*?|/\*?|\*)" + _END
 _PS_BASE = r"[A-Za-z]:|~|\$HOME|\$env:USERPROFILE|\.{1,2}"
 PS_RISKY = r"(?<!\S)['\"]?(?:(?:" + _PS_BASE + r")[\\/]?\*?|[\\/]\*?|\*)" + _END
 RECURSIVE = r"(?=" + _SEGMENT + r"*\s(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)(?=\s|$))"
@@ -74,6 +75,8 @@ _BLOCK_DEVICE = r"(?:sd|nvme|hd|vd|xvd|disk|mmcblk)"
 DB_IN_COMMAND = re.compile(CMD + r"(?:[^\s;&|()`{]*/)?(?:sqlite3|psql|mysql|mariadb)\b")
 QUOTED = re.compile(r"'[^']*'|\"(?:\\.|[^\"\\])*\"")
 # A heredoc whose body runs as commands rather than being stored as text.
+# A line continuation: bash `\\` and PowerShell backtick before a line break.
+CONTINUATION = re.compile(r"\\\r?\n|`\r?\n")
 SHELL_FED = re.compile(r"\b(?:sh|bash|zsh|dash|ksh|ssh|su|sudo|eval|source|xargs)\b")
 
 RULES: list[tuple[str, re.Pattern[str]]] = [
@@ -105,7 +108,13 @@ RULES: list[tuple[str, re.Pattern[str]]] = [
     ),
     (
         "git reset --hard to a remote or older commit",
-        re.compile(CMD + GIT + r"reset\s+--hard\s+(?:origin/|upstream/|HEAD~|HEAD\^|@~|--)"),
+        # `@{u}`, `HEAD@{1}`, `FETCH_HEAD`, a bare `origin`: someone else's or older state.
+        re.compile(
+            CMD
+            + GIT
+            + r"reset\s+--hard\s+(?:(?:origin|upstream)\b|HEAD~|HEAD\^|HEAD@|@\{|@~"
+            + r"|FETCH_HEAD|ORIG_HEAD|--)"
+        ),
     ),
     (
         "git clean deleting untracked files",
@@ -168,12 +177,12 @@ def code_only(command: str) -> str:
     out, pos = [], 0
     for doc in sw.heredocs(command):
         head = command[command.rfind("\n", 0, doc.start) + 1 : doc.start]
-        if SHELL_FED.search(head):
-            continue  # `bash <<EOF`: the body is commands, keep it
+        if SHELL_FED.search(head) or SHELL_FED.search(doc.tail):
+            continue  # `bash <<EOF`, `cat <<EOF | bash`: the body is commands, keep it
         out.append(command[pos : doc.start] + " " + doc.tail)
         pos = doc.end
     out.append(command[pos:])
-    return sw.strip_herestrings("".join(out))
+    return CONTINUATION.sub(" ", sw.strip_herestrings("".join(out)))
 
 
 def blank_quoted(text: str) -> str:

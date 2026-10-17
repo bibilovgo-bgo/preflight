@@ -347,7 +347,7 @@ def test_git_failure_reads_as_empty_diff(monkeypatch, tmp_path):
 
     monkeypatch.setattr(ss.subprocess, "run", boom)
     assert ss._git_diff(tmp_path) == ""
-    assert ss.commit_diff(gc.Commit(tmp_path, True, ("a.py",))) == "\n"
+    assert ss.commit_diff(gc.Commit(tmp_path, True, ("a.py",))) == ("\n", [])
 
 
 def test_unparseable_command_still_scans_the_working_repository(repo):
@@ -578,9 +578,12 @@ def test_secret_file_name_hit_is_clipped():
 
 
 def test_add_args_respects_double_dash_and_value_options():
-    assert gc.add_args(["--", "-weird.py"]) == ["-weird.py"]
-    assert gc.add_args(["--chmod", "+x", "run.sh"]) == ["run.sh"]
-    assert gc.add_args(["-A"]) == [gc.ALL]
+    assert gc.add_args(["--", "-weird.py"]) == (["-weird.py"], False)
+    assert gc.add_args(["--chmod", "+x", "run.sh"]) == (["run.sh"], False)
+    assert gc.add_args(["-A"]) == ([gc.ALL], False)
+    assert gc.add_args(["-f", ".env"]) == ([".env"], True)
+    assert gc.add_args(["-n", "x.py"]) == ([], False)
+    assert gc.add_args(["--pathspec-from-file", "list.txt"]) == ([gc.ALL], False)
 
 
 def test_only_cmd_takes_a_slash_c_wrapper():
@@ -596,9 +599,10 @@ def test_wrapping_depth_boundary(tmp_path, wraps, found):
     assert len(gc.find_commits(command, tmp_path, powershell=False)) == found
 
 
-def test_large_untracked_file_is_skipped(repo):
+def test_large_untracked_file_is_not_silent(repo):
+    """A file too big to read blocks with a note: silence would read as "no secrets"."""
     untracked(repo, "big.py", LINE + "\n" + "x = 1\n" * 200_000)
-    assert scan_code(repo, "git add -A && git commit -m x") == 0
+    assert scan_code(repo, "git add -A && git commit -m x") == 2
 
 
 def test_add_from_a_subdirectory_scans_untracked_files_above_it(repo):
