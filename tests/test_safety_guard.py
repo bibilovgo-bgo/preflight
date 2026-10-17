@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import time
 
 import pytest
@@ -75,6 +76,53 @@ MUST_BLOCK = [
     # a heredoc fed to a shell runs its body
     "bash <<'EOF'\nrm -rf ~\nEOF",
     "ssh host 'bash -s' <<'EOF'\ngit push --force origin main\nEOF",
+    # commands wrapped in a shell, ssh or PowerShell run all the same
+    "bash -c 'rm -rf ~'",
+    "sh -ec 'rm -rf /'",
+    "pwsh -c Remove-Item -Recurse -Force C:/",
+    'powershell -Command "Remove-Item -Recurse -Force $HOME"',
+    "cmd /c rm -rf /",
+    "ssh -p 2222 -i ~/.ssh/k root@1.2.3.4 'rm -rf /'",
+    "ssh prod 'git push --force origin main'",
+    "ssh prod \"bash -c 'rm -rf ~'\"",
+    "ssh prod rm -rf /var",
+    "cd /x && ssh prod 'psql -c \"DROP TABLE users\"'",
+    # on a remote host any absolute recursive delete is the site or its data
+    'ssh prod "rm -rf /var/www"',
+    'ssh -p 2222 h "rm -r /srv/data"',
+    "ssh prod \"bash -c 'rm -rf /home/app'\"",
+    "ssh prod 'cd /x; sudo rm -rf /opt/app/data'",
+    "ssh -o StrictHostKeyChecking=no prod 'rm -rf \"/opt/app\"'",
+    # options after the host, `--`, launchers around ssh (review findings)
+    "ssh host -t 'sudo rm -rf /var/www'",
+    "ssh host -tt rm -rf /var/www",
+    "ssh user@host -p 22 'rm -rf /var/www'",
+    "ssh host -- 'rm -rf /var/www'",
+    "sshpass -p x ssh host 'rm -rf /var/www'",
+    "mosh host -- rm -rf /var/www",
+    "autossh -M 0 host 'rm -rf /var/www'",
+    "ssh host 'sudo -u www rm -rf /var/www'",
+    "ssh host 'nice -n 5 rm -rf /var/www'",
+    "ssh host <<'EOF'\nrm -rf /var/www\nEOF",
+    "ssh host bash <<'EOF'\ncd /x\nrm -rf /var/www\nEOF",
+    "ssh host 'rm -rf /tmp/../etc'",
+    "ssh host 'rm -rf /var/www/__pycache__/../app'",
+    "ssh host \"rm -rf '/srv/my app'\"",
+    # prefixes with values and other launchers, locally
+    "sudo -u root rm -rf /",
+    "sudo -n rm -rf /",
+    "sudo -u x bash -c 'rm -rf ~'",
+    "doas -u root rm -rf /",
+    "su -c 'rm -rf /'",
+    "su root -c 'rm -rf ~'",
+    "wsl rm -rf ~",
+    "wsl -d Ubuntu -e rm -rf /",
+    "docker exec app sh -c 'rm -rf /'",
+    "kubectl exec pod -- rm -rf /",
+    "bash -o pipefail -c 'rm -rf ~'",
+    'cmd /c "rd /s /q C:\\\\"',
+    "rd /S /Q C:\\",
+    "del /s /q *",
 ]
 
 MUST_PASS = [
@@ -129,6 +177,31 @@ MUST_PASS = [
     "mkfs.ext4 disk.img",
     # only ignored build output
     "git clean -fdX",
+    # wrappers around harmless commands, and deploy cleanups on a server
+    "bash -c 'rm -rf build/'",
+    'ssh prod "ls -la /var/www"',
+    "ssh prod",
+    "ssh -p 2222 prod",
+    "ssh prod 'rm -rf /opt/metaai/core/__pycache__'",
+    "ssh prod 'rm -rf /tmp/upload-123'",
+    "ssh prod 'rm -f /var/log/app.log'",
+    "ssh prod 'cd /opt/app && rm -rf build'",
+    "ssh prod 'rm -rf $RELEASE_DIR'",
+    "rm -rf /var/www",
+    "bash -c 'rm -rf /var/www'",
+    'git commit -m "ssh prod rm -rf /"',
+    "echo 'bash -c \"rm -rf ~\"' >> notes.md",
+    "ssh host \"rm -rf '/tmp'\"",
+    "ssh host 'rm -rf /tmp/build-1 /tmp/build-2'",
+    "bash deploy.sh -c 'rm -rf /'",
+    "ssh host -t 'ls /var/www'",
+    "sudo -u www ls /var/www",
+    "docker exec app rm -rf /app/cache",
+    "rd /s /q build",
+    "cat > notes.md <<'EOF'\nrm -rf /var/www\nEOF",
+    "del /q C:\\tmp\\x.log",
+    "find . -name '*.pyc' -exec rm -f {} +",
+    "rm -rf ./{a,b}",
 ]
 
 
@@ -140,6 +213,14 @@ HOSTILE = [
     "git push " * 20_000,
     "rm -r " + "a " * 50_000,
     "FOO=1 " * 20_000 + "rm -rf /",
+    "ssh " * 20_000,
+    "bash -c " * 20_000,
+    "ssh h " * 10_000 + "rm -rf /x",
+    "bash -c 'bash -c \"bash -c " * 3_000,
+    "{rm -r " * 8_000,
+    "{git push " * 8_000,
+    "ssh h '" + "{rm -r " * 5_000 + "'",
+    "sudo -u x " * 10_000 + "rm -rf /",
 ]
 
 
@@ -168,7 +249,36 @@ def test_passes(command):
 def test_every_rule_is_exercised():
     """Each rule must be reached by at least one blocking example."""
     hit = {label for command in MUST_BLOCK for label in sg.scan(command)}
-    assert hit == {label for label, _ in sg.RULES}
+    assert hit == {label for label, _ in sg.RULES} | {sg.REMOTE_LABEL}
+
+
+def test_wrapping_deeper_than_the_limit_is_not_followed():
+    """Nesting is followed MAX_DEPTH levels deep, so a crafted command cannot recurse forever."""
+    inner = "rm -rf ~"
+    for _ in range(sg.MAX_DEPTH):
+        inner = "bash -c " + shlex.quote(inner)
+    assert sg.scan(inner)
+    assert sg.scan("bash -c " + shlex.quote(inner)) == []
+
+
+def test_powershell_cmd_wrapper_reads_backslashes():
+    assert sg.scan("cmd /c rd /s /q C:\\", powershell=True)
+
+
+def test_process_parses_powershell_by_tool_name():
+    """`bash -c \\"rm -rf ~\\"` is one quoted word only in PowerShell, where `\\` is no escape."""
+    command = 'bash -c \\"rm -rf ~\\"'
+    assert sg.scan(command, powershell=True) != sg.scan(command)
+    expected = 2 if sg.scan(command, powershell=True) else 0
+    payload = {"tool_name": "PowerShell", "tool_input": {"command": command}}
+    assert run_guard("safety_guard", payload).returncode == expected
+    payload = {"tool_name": "Bash", "tool_input": {"command": command}}
+    assert run_guard("safety_guard", payload).returncode == 2 - expected
+
+
+def test_remote_rule_names_the_host_case():
+    assert sg.scan('ssh prod "rm -rf /var/www"') == [sg.REMOTE_LABEL]
+    assert sg.REMOTE_LABEL not in sg.scan("rm -rf /")
 
 
 def test_process_blocks_with_reason():

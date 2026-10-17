@@ -14,7 +14,7 @@ select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["repo_files", "repo_settings", "git_commands", "secret_patterns", "_common", "shell_words", "safety_guard", "secret_scan", "browser_guard", "clone_scan", "findings", "repo_scan", "repo_git", "repo_fixtures", "conftest"]
+known-first-party = ["wrappers", "key_guard", "key_stages", "shell_pipes", "secret_files", "repo_files", "repo_settings", "git_commands", "secret_patterns", "_common", "shell_words", "safety_guard", "secret_scan", "browser_guard", "clone_scan", "findings", "repo_scan", "repo_git", "repo_fixtures", "conftest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

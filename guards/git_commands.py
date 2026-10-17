@@ -18,6 +18,7 @@ from typing import NamedTuple
 
 import _common as c
 import shell_words as sw
+import wrappers
 
 # `git commit` options that take the next word as their value.
 COMMIT_VALUE_OPTS = frozenset(
@@ -29,8 +30,6 @@ COMMIT_VALUE_OPTS = frozenset(
 VALUE_SHORT = "mFcCt"
 GIT_VALUE_OPTS = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
 ADD_VALUE_OPTS = frozenset({"--chmod", "--pathspec-from-file"})
-POSIX_SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ksh"})
-POWERSHELLS = frozenset({"powershell", "pwsh"})
 ALL = ":/"  # pathspec for the whole working tree, from any subdirectory
 MAX_DEPTH = 3
 
@@ -102,20 +101,6 @@ def add_args(rest: list[str]) -> list[str]:
     return paths
 
 
-def _wrapped(words: list[str]) -> tuple[str, bool] | None:
-    """(inner command, is PowerShell) for `bash -c`, `powershell -Command`, `cmd /c`."""
-    head = sw.command_name(words[0])
-    for i, word in enumerate(words[1:-1], start=1):
-        flag = word.lower()
-        if head in POSIX_SHELLS and re.fullmatch(r"-[a-z]*c", flag):
-            return words[i + 1], False
-        if head in POWERSHELLS and flag in ("-c", "-command"):
-            return " ".join(words[i + 1 :]), True
-        if head == "cmd" and flag in ("/c", "/k"):
-            return " ".join(words[i + 1 :]), True
-    return None
-
-
 def find_commits(
     command: str, base: Path, powershell: bool, depth: int = 0, added: dict | None = None
 ) -> list[Commit] | None:
@@ -126,7 +111,8 @@ def find_commits(
     found: list[Commit] = []
     added = {} if added is None else added
     for words, here in commands:
-        inner = _wrapped(words) if depth < MAX_DEPTH else None
+        # A commit over ssh is the remote host's, not this repository's: ssh=False.
+        inner = wrappers.inner_command(words) if depth < MAX_DEPTH else None
         if inner is not None:
             found += find_commits(inner[0], here, inner[1], depth + 1, added) or []
         else:

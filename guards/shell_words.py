@@ -172,6 +172,25 @@ def _drop_comments(text: str) -> str:
     return _TEXT.sub(keep, text)
 
 
+def is_punct(token: str) -> bool:
+    return bool(token) and set(token) <= set(_PUNCT)
+
+
+def tokens(cmd: str, powershell: bool) -> list[str] | None:
+    """Shell tokens of the command; None if it cannot be parsed."""
+    text = strip_herestrings(strip_heredocs(cmd))
+    if len(text) > MAX_PARSE:
+        return None
+    lex = shlex.shlex(_drop_comments(text), posix=True, punctuation_chars=_PUNCT)
+    lex.whitespace, lex.whitespace_split, lex.commenters = " \t\r", True, ""
+    if powershell:
+        lex.escape = ""
+    try:
+        return list(lex)
+    except ValueError:
+        return None
+
+
 def simple_commands(cmd: str, powershell: bool = False) -> list | None:
     """Command -> in order: word lists of simple commands and subshell parens.
 
@@ -182,22 +201,14 @@ def simple_commands(cmd: str, powershell: bool = False) -> list | None:
     In PowerShell the backslash is a path character, not an escape (the escape
     is the backtick): POSIX parsing would turn `C:\\Users\\x` into `C:Usersx`.
     """
-    text = strip_herestrings(strip_heredocs(cmd))
-    if len(text) > MAX_PARSE:
-        return None
-    lex = shlex.shlex(_drop_comments(text), posix=True, punctuation_chars=_PUNCT)
-    lex.whitespace, lex.whitespace_split, lex.commenters = " \t\r", True, ""
-    if powershell:
-        lex.escape = ""
-    try:
-        tokens = list(lex)
-    except ValueError:
+    found = tokens(cmd, powershell)
+    if found is None:
         return None
     events: list = []
     words: list[str] = []
     target = False
-    for token in tokens:
-        if token and set(token) <= set(_PUNCT):
+    for token in found:
+        if is_punct(token):
             if ("<" in token or ">" in token) and not set(token) & set("()"):
                 if words and words[-1].isdigit():
                     words.pop()  # `2>&1`: the digit is a stream number
@@ -219,8 +230,20 @@ _ASSIGN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 # Words in front of the real command: `if git commit`, `time git`, `! git`.
 _PREFIX = frozenset(
     {"if", "then", "elif", "else", "while", "until", "do", "!", "{",
-     "time", "command", "builtin", "exec", "nohup", "sudo"}
+     "time", "command", "builtin", "exec", "nohup", "sudo", "doas", "nice",
+     "ionice", "stdbuf", "xargs"}
 )  # fmt: skip
+# Options of a prefix that take the next word: in `sudo -u www rm`, `www` is the
+# user, not the command. Per prefix: `sudo -n` is a flag, `nice -n 5` is not.
+_PREFIX_VALUE = {
+    "sudo": frozenset("-u -g -C -D -h -p -r -t -U -T --user --group --chdir --host "
+                      "--prompt --role --type --other-user --close-from".split()),
+    "doas": frozenset({"-u", "-C"}),
+    "nice": frozenset({"-n", "--adjustment"}),
+    "ionice": frozenset({"-c", "-n", "-p", "--class", "--classdata", "--pid"}),
+    "xargs": frozenset("-I -L -n -P -d -s -E -a --max-args --max-procs --arg-file "
+                       "--delimiter --max-lines --max-chars --eof".split()),
+}  # fmt: skip
 _ENV_VALUE = frozenset({"-u", "--unset", "-S", "--split-string"})
 _TIMEOUT_VALUE = frozenset({"-k", "--kill-after", "-s", "--signal"})
 
@@ -239,8 +262,9 @@ def command_head(words: list[str]) -> tuple[list[str], list[str], str]:
         if _ASSIGN.match(word):
             assigns.append(word)
         elif word in _PREFIX:
+            values = _PREFIX_VALUE.get(word, frozenset())
             while i < len(words) and words[i].startswith("-"):
-                i += 1
+                i += 2 if words[i] in values else 1
         elif word == "env":
             while i < len(words) and (words[i].startswith("-") or _ASSIGN.match(words[i])):
                 option = words[i]

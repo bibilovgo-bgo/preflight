@@ -70,6 +70,7 @@ def test_every_guard_is_wired():
     assert wired == {
         "safety_guard",
         "secret_scan",
+        "key_guard",
         "browser_guard",
         "clone_scan",
     }

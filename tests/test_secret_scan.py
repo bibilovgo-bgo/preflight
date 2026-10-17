@@ -9,6 +9,7 @@ import pytest
 import git_commands as gc
 import secret_patterns as sp
 import secret_scan as ss
+import wrappers
 from conftest import git, run_guard
 
 # Built from parts so this file is not itself a finding for any scanner.
@@ -583,8 +584,8 @@ def test_add_args_respects_double_dash_and_value_options():
 
 
 def test_only_cmd_takes_a_slash_c_wrapper():
-    assert gc._wrapped(["ls", "/c", "git commit -m x"]) is None
-    assert gc._wrapped(["cmd", "/c", "git", "commit"]) == ("git commit", True)
+    assert wrappers.inner_command(["ls", "/c", "git commit -m x"]) is None
+    assert wrappers.inner_command(["cmd", "/c", "git", "commit"]) == ("git commit", True)
 
 
 @pytest.mark.parametrize(("wraps", "found"), [(3, 1), (4, 0)])

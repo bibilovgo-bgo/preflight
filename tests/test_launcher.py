@@ -87,6 +87,10 @@ HOOK_CASES = {
         2,
     ),
     "secret_scan": ({"tool_name": "Bash", "tool_input": {"command": "ls"}}, 0),
+    "key_guard": (
+        {"tool_name": "Read", "tool_input": {"file_path": "/home/me/.ssh/id_rsa"}},
+        2,
+    ),
     "browser_guard": (
         {"tool_name": "mcp__Claude_Browser__find", "tool_input": {}, "session_id": "s"},
         0,

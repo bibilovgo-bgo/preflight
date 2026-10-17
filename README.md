@@ -14,7 +14,8 @@ checks both before the damage is done.
   Claude Code or VS Code: the worm-planted `SessionStart` hooks, `folderOpen`
   tasks, payload-style install scripts, hidden text in `CLAUDE.md`.
 
-Two smaller guards come along: a block on irreversible shell commands and two
+Three smaller guards come along: a block on irreversible shell commands, one on
+printing private keys or sending secret files over the network, and two
 browser-automation checks.
 
 | Guard | When | Stops |
@@ -22,6 +23,7 @@ browser-automation checks.
 | `secrets` | before `git commit` | API keys, tokens, private keys, passwords in URLs, committed `.env` and key files, in whatever the commit will actually record |
 | `clone_scan` | after `git clone` | nothing is blocked: it tells the model what in the clone would run as soon as the folder is opened |
 | `safety` | before `Bash` / `PowerShell` | `rm -rf ~`, `Remove-Item -Recurse -Force C:\`, `DROP TABLE` through a DB client, `git push --force`, `git reset --hard origin/...`, `git clean -fd`, `mkfs` or `dd` onto a disk |
+| `keys` | before `Read`, `Grep`, `Bash`, `PowerShell` | printing a private key into the transcript (`cat ~/.ssh/id_rsa`), sending `.env`, a key or a credentials file over the network (`curl -d @.env`, `cat .env \| nc`); reading `.env` and using keys stay allowed |
 | `browser` | before Claude's browser tools | reading a page right after loading it, `querySelector(...).x` with no null check |
 
 Plus a command for folders you did not clone: `/preflight:scan path/to/folder`.
@@ -131,6 +133,34 @@ message that mentions `rm -rf /` passes, unless the heredoc is fed to a shell
 (`bash <<EOF`, `ssh host <<EOF`). Delete targets count only as whole words:
 `rm -rf build/` passes, `rm -rf ~` does not. `git -C dir push --force` and
 `sudo rm -rf /` are caught; `dd of=/dev/null` and `git clean -X` are not blocked.
+Commands inside `bash -c '...'`, `pwsh -Command ...`, `cmd /c ...`, `su -c`,
+`wsl`, `docker exec`, `kubectl exec`, `ssh host '...'` (with `sshpass`,
+`autossh` and `mosh` around it, or a heredoc fed to it) are unwrapped and
+checked too, and so is the command behind `sudo -u www`. On a remote host the
+delete rule is stricter, because there a recursive delete of an absolute path
+is usually the site or its data: `ssh prod "rm -rf /var/www"` is blocked,
+while `/tmp/...` and `__pycache__` cleanups pass (`/tmp/../etc` does not).
+
+**keys** draws the line where the damage is, so the agent can still set things
+up on its own. Reading `.env` is allowed; printing a private key is not: a
+`Read` of the key file, `cat`, `head`, `base64`, `Get-Content` and similar
+readers, `cat ~/.ssh/*`, `echo "$(cat key)"`, `Grep` through `~/.ssh`. A key
+is recognised by its name (`id_ed25519`, `deploy_rsa`, `*.key`, `privkey.pem`,
+`.ppk`, `.p12`, `ssh_host_*_key`) and, for a file that exists, by its first
+line (OpenSSH, PEM, PGP, PuTTY, a key inside a PEM bundle), so
+`~/.ssh/hetzner` counts too; `$HOME`, `$env:USERPROFILE` and `cd` are
+followed. A search pattern is not a file: `grep -rn id_rsa .` passes. Using a
+key never shows it and passes: `ssh -i`, `scp`, `ssh-add`, `ssh-keygen -y`,
+`git`, `curl --key`. The second rule stops a secret file (`.env`, `prod.env`,
+keys, `.netrc`, `.npmrc`, `~/.aws/credentials`, `~/.kube/config` and the like)
+from leaving the machine through `curl`, `wget`, `nc`, `socat`, `gh gist`,
+`> /dev/tcp/...` or `Invoke-WebRequest`: `-d @.env`, `-F file=@.env`,
+`-T ~/.aws/credentials`, `-InFile .env`, `cat .env | curl`, `tar cz .env | curl`,
+`nc host < .env`, and the whole environment (`env | curl -d @- ...`). That is
+the move a planted instruction in a README asks for. `scp .env server:` to
+your own server and `curl -sSLo .env` (a download) pass; `.env.example` and
+friends are not secrets. Paths on the network (`//host/share`) are never
+opened: on Windows that alone would send your NTLM hash to the host.
 
 **clone_scan** reports `high` for payload techniques (a download piped into a
 shell, encoded or hidden PowerShell, base64 decoded and run, a reverse shell),
@@ -151,7 +181,7 @@ in the `env` block of `~/.claude/settings.json`.
 | Variable | Effect |
 |---|---|
 | `PREFLIGHT=0` | turn every guard off |
-| `PREFLIGHT_SAFETY=0`, `PREFLIGHT_SECRETS=0`, `PREFLIGHT_BROWSER=0`, `PREFLIGHT_CLONE_SCAN=0` | turn one guard off |
+| `PREFLIGHT_SAFETY=0`, `PREFLIGHT_SECRETS=0`, `PREFLIGHT_KEYS=0`, `PREFLIGHT_BROWSER=0`, `PREFLIGHT_CLONE_SCAN=0` | turn one guard off |
 | `PREFLIGHT_BROWSER_SETTLE=5` | seconds a page needs after loading (default 3) |
 | `PREFLIGHT_LOG=1` | append each block to `~/.claude/plugins/data/<plugin>/log/<guard>.jsonl` (off by default; file names and rule labels only, never values) |
 
@@ -188,8 +218,11 @@ same command is not blocked twice.
 
 These are seatbelts against mistakes, not a sandbox against a hostile agent.
 The checks read the command text: the same `rm -rf` written into a script file
-and run from there, `find / -delete`, a commit made by a git alias, or a
-directory held in a variable (`cd $REPO`) are not followed. For isolation use
+and run from there, `find / -delete`, `eval "$cmd"`, `echo 'rm -rf ~' | sh`, a
+commit made by a git alias, a key opened by a Python one-liner, a secret sent
+line by line in a loop, a path or a directory held in a variable
+(`f=.env; curl -d @$f`, `cd $REPO`) are not followed, and commands run through
+an MCP terminal tool instead of `Bash` or `PowerShell` are not seen at all. For isolation use
 Claude Code's sandbox and permission rules; use Preflight so that the classic
 accidents need a second, deliberate step.
 
