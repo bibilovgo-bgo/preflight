@@ -12,7 +12,7 @@ The commit gate refuses a new `feat:` until the previous one is named here.
 - Mutation runs: e9c6434 and cd93f7e closed the surviving mutants that were
   real gaps; the rest were analysed as equivalent or Linux-only.
 
-## feat(keys): the keys guard, and safety unwrapping ssh, bash -c and sudo -u
+## 313128b feat(keys): the keys guard, and safety unwrapping ssh, bash -c and sudo -u
 
 Stage of 17.10.2026: `guards/key_guard.py`, `key_stages.py`, `secret_files.py`,
 `shell_pipes.py`, `wrappers.py`, and the safety guard reading wrapped and
