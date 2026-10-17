@@ -2,16 +2,6 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" edit_guard",
-            "timeout": 10
-          }
-        ]
-      },
-      {
         "matcher": "Bash|PowerShell",
         "hooks": [
           {

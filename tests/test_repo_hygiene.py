@@ -68,7 +68,6 @@ def test_every_hook_runs_an_existing_guard_through_the_launcher():
 def test_every_guard_is_wired():
     wired = {command.rsplit(" ", 1)[1] for _e, _m, command in hook_commands()}
     assert wired == {
-        "edit_guard",
         "safety_guard",
         "secret_scan",
         "browser_guard",

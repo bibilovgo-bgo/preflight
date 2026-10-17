@@ -2,10 +2,8 @@
 
 ## 0.1.0 (unreleased)
 
-First version: five guards and a scan command.
+First version: four guards and a scan command.
 
-- `edit`: blocks an Edit whose anchor is missing, ambiguous without
-  `replace_all`, or identical to the replacement; points at the closest line.
 - `safety`: blocks recursive deletes of a root, home, current, parent or system
   directory, SQL DROP / TRUNCATE / unconditional DELETE through a database
   client, force push, hard reset to a remote or older commit, `git clean`, disk
@@ -19,3 +17,7 @@ First version: five guards and a scan command.
   when the folder is opened; never follows links, never runs the repository's
   programs, never lets a failing check go silent.
 - `/preflight:scan <folder>`: the same scan for a folder that was not cloned.
+
+An Edit guard was built and removed before release: a live test showed that
+current Claude Code rejects drifted, ambiguous and no-op Edit anchors itself,
+before any hook is called.

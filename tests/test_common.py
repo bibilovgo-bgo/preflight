@@ -10,23 +10,23 @@ import _common as c
 
 
 def test_off_switch_names_the_variable(monkeypatch):
-    assert c.off_switch("edit") == ""
-    monkeypatch.setenv("PREFLIGHT_EDIT", "0")
-    assert c.off_switch("edit") == "PREFLIGHT_EDIT"
     assert c.off_switch("safety") == ""
+    monkeypatch.setenv("PREFLIGHT_SAFETY", "0")
+    assert c.off_switch("safety") == "PREFLIGHT_SAFETY"
+    assert c.off_switch("secrets") == ""  # one switch does not silence a neighbour
     monkeypatch.setenv("PREFLIGHT", "0")
     assert c.off_switch("safety") == "PREFLIGHT"
 
 
 def test_switch_value_is_stripped(monkeypatch):
-    monkeypatch.setenv("PREFLIGHT_EDIT", " 0 ")
-    assert c.off_switch("edit") == "PREFLIGHT_EDIT"
+    monkeypatch.setenv("PREFLIGHT_SAFETY", " 0 ")
+    assert c.off_switch("safety") == "PREFLIGHT_SAFETY"
 
 
 @pytest.mark.parametrize("value", ["1", "", "false", "no"])
 def test_only_zero_switches_off(monkeypatch, value):
-    monkeypatch.setenv("PREFLIGHT_EDIT", value)
-    assert c.off_switch("edit") == ""
+    monkeypatch.setenv("PREFLIGHT_SAFETY", value)
+    assert c.off_switch("safety") == ""
 
 
 def test_data_dir_prefers_plugin_data(monkeypatch, tmp_path):
@@ -43,14 +43,14 @@ def test_session_file_sanitizes_and_refuses_empty():
 
 
 def test_log_is_off_by_default(tmp_path):
-    c.log("edit", {"a": 1})
+    c.log("safety", {"a": 1})
     assert not (c.data_dir() / "log").exists()
 
 
 def test_log_writes_when_enabled(monkeypatch):
     monkeypatch.setenv("PREFLIGHT_LOG", "1")
-    c.log("edit", {"a": 1})
-    line = (c.data_dir() / "log" / "edit.jsonl").read_text(encoding="utf-8")
+    c.log("safety", {"a": 1})
+    line = (c.data_dir() / "log" / "safety.jsonl").read_text(encoding="utf-8")
     record = json.loads(line)
     assert record["a"] == 1 and "ts" in record
 
@@ -91,18 +91,20 @@ def test_run_turns_a_crash_into_a_pass_and_a_log_line(monkeypatch):
         raise ValueError("embedded null byte")
 
     with pytest.raises(SystemExit) as exit_info:
-        c.run("edit", crash)
+        c.run("safety", crash)
     assert exit_info.value.code == 0
-    assert "embedded null byte" in (c.data_dir() / "log" / "edit.jsonl").read_text(encoding="utf-8")
+    assert "embedded null byte" in (c.data_dir() / "log" / "safety.jsonl").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_run_passes_the_exit_code_through():
     with pytest.raises(SystemExit) as exit_info:
-        c.run("edit", lambda: 2)
+        c.run("safety", lambda: 2)
     assert exit_info.value.code == 2
 
 
-@pytest.mark.parametrize("guard", ["edit_guard", "safety_guard", "secret_scan", "browser_guard"])
+@pytest.mark.parametrize("guard", ["safety_guard", "secret_scan", "browser_guard"])
 def test_nul_byte_in_cwd_fails_open(guard):
     from conftest import run_guard
 

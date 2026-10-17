@@ -13,7 +13,6 @@ import pytest
 import _common as c
 import browser_guard as bg
 import clone_scan as cs
-import edit_guard as eg
 import repo_fixtures as fx
 import repo_git
 from conftest import run_guard
@@ -47,8 +46,8 @@ def test_session_name_is_capped_at_96():
 
 def test_log_switch_value_is_stripped(monkeypatch):
     monkeypatch.setenv("PREFLIGHT_LOG", " 1 ")
-    c.log("edit", {"a": 1})
-    assert (c.data_dir() / "log" / "edit.jsonl").exists()
+    c.log("safety", {"a": 1})
+    assert (c.data_dir() / "log" / "safety.jsonl").exists()
 
 
 def test_crash_log_line_is_capped(monkeypatch):
@@ -58,8 +57,8 @@ def test_crash_log_line_is_capped(monkeypatch):
         raise ValueError("x" * 1000)
 
     with pytest.raises(SystemExit):
-        c.run("edit", crash)
-    record = json.loads((c.data_dir() / "log" / "edit.jsonl").read_text(encoding="utf-8"))
+        c.run("safety", crash)
+    record = json.loads((c.data_dir() / "log" / "safety.jsonl").read_text(encoding="utf-8"))
     assert len(record["crash"]) == 300
 
 
@@ -71,18 +70,6 @@ def test_block_without_hint_has_no_trailing_blank_line(capsys):
 def test_tell_model_without_user_line_has_no_system_message(capsys):
     c.tell_model("PostToolUse", "ctx")
     assert "systemMessage" not in json.loads(capsys.readouterr().out)
-
-
-# --- edit_guard ----------------------------------------------------------------
-
-
-def test_hint_needs_no_shared_first_word_on_ordinary_files(tmp_path):
-    path = tmp_path / "f.py"
-    path.write_text("return value\n", encoding="utf-8")
-    problems = eg.check_edit(
-        {"file_path": str(path), "old_string": "retrun value", "new_string": "x"}
-    )
-    assert "Closest line in the file: 'return value'" in problems[0]
 
 
 # --- browser_guard -------------------------------------------------------------

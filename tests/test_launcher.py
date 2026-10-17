@@ -82,13 +82,6 @@ def test_without_python_it_steps_aside_and_says_so_once(tmp_path):
 
 
 HOOK_CASES = {
-    "edit_guard": (
-        {
-            "tool_name": "Edit",
-            "tool_input": {"file_path": "nope", "old_string": "a", "new_string": "a"},
-        },
-        2,
-    ),
     "safety_guard": (
         {"tool_name": "Bash", "tool_input": {"command": "git push --force origin main"}},
         2,

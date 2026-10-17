@@ -2,7 +2,7 @@
   "name": "preflight",
   "displayName": "Preflight",
   "version": "0.1.0",
-  "description": "Preflight checks for Claude Code tool calls: catch drifted Edit anchors, destructive shell commands and secrets in commits before they run.",
+  "description": "Preflight checks for Claude Code tool calls: block secrets in commits and irreversible shell commands, and scan fresh clones for code that runs on open.",
   "author": {
     "name": "Georgiy Bibilov",
     "url": "https://github.com/bibilovgo-bgo"
@@ -10,5 +10,5 @@
   "homepage": "https://github.com/bibilovgo-bgo/preflight",
   "repository": "https://github.com/bibilovgo-bgo/preflight",
   "license": "Apache-2.0",
-  "keywords": ["hooks", "guardrails", "safety", "secrets", "edit", "pretooluse"]
+  "keywords": ["hooks", "guardrails", "safety", "secrets", "supply-chain", "pretooluse"]
 }

@@ -9,7 +9,7 @@
     {
       "name": "preflight",
       "source": "./",
-      "description": "Preflight checks for Claude Code tool calls: drifted Edit anchors, destructive commands, secrets in commits."
+      "description": "Block secrets in commits and irreversible shell commands; scan fresh clones for code that runs on open."
     }
   ]
 }
