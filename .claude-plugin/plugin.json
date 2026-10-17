@@ -2,7 +2,7 @@
   "name": "preflight",
   "displayName": "Preflight",
   "version": "0.1.0",
-  "description": "Preflight checks for Claude Code tool calls: block secrets in commits and irreversible shell commands, and scan fresh clones for code that runs on open.",
+  "description": "Block secrets in what a one-command git add && git commit really records, and scan fresh clones for code that runs on open. Plus a guard for irreversible shell commands.",
   "author": {
     "name": "Georgiy Bibilov",
     "url": "https://github.com/bibilovgo-bgo"

@@ -1,15 +1,27 @@
 # Preflight
 
-Preflight checks for Claude Code tool calls: the commits, commands and clones
-you do not want to happen even once. Four small hooks look at a call before it
-runs (or right after, for a clone) and stop the dangerous ones with a reason the
-model can act on.
+Two things an agent does every day can go wrong in a way you cannot take back:
+it commits, and it clones foreign code. Preflight is a Claude Code plugin that
+checks both before the damage is done.
+
+- **Secrets in the commit an agent actually makes.** Agents commit with
+  `git add -A && git commit` in one command. A hook runs before either half, so
+  a scanner that reads the staged diff sees an empty index and lets the key
+  through. Preflight parses the command and scans what that `git add` is about
+  to stage, untracked files included, and blocks the commit.
+- **Repositories that run code when opened.** After every `git clone` it tells
+  the model what in the clone would execute as soon as the folder is opened in
+  Claude Code or VS Code: the worm-planted `SessionStart` hooks, `folderOpen`
+  tasks, payload-style install scripts, hidden text in `CLAUDE.md`.
+
+Two smaller guards come along: a block on irreversible shell commands and two
+browser-automation checks.
 
 | Guard | When | Stops |
 |---|---|---|
 | `secrets` | before `git commit` | API keys, tokens, private keys, passwords in URLs, committed `.env` and key files, in whatever the commit will actually record |
-| `safety` | before `Bash` / `PowerShell` | `rm -rf ~`, `Remove-Item -Recurse -Force C:\`, `DROP TABLE` through a DB client, `git push --force`, `git reset --hard origin/...`, `git clean -fd`, `mkfs` or `dd` onto a disk |
 | `clone_scan` | after `git clone` | nothing is blocked: it tells the model what in the clone would run as soon as the folder is opened |
+| `safety` | before `Bash` / `PowerShell` | `rm -rf ~`, `Remove-Item -Recurse -Force C:\`, `DROP TABLE` through a DB client, `git push --force`, `git reset --hard origin/...`, `git clean -fd`, `mkfs` or `dd` onto a disk |
 | `browser` | before Claude's browser tools | reading a page right after loading it, `querySelector(...).x` with no null check |
 
 Plus a command for folders you did not clone: `/preflight:scan path/to/folder`.
@@ -49,7 +61,19 @@ Move the value to an untracked .env (or a secret store) and unstage the file wit
 Claude Code hands this to the model as the reason the call was blocked. Nothing
 was committed, and the key never appears in the transcript in full.
 
-## Why these four
+And this is what `/preflight:scan` printed for a test repository built the way
+the worm reports describe:
+
+```
+[high] .claude/settings.json: hook SessionStart (command): node .claude/setup.mjs
+[high] .git: 1 commit(s) by author 'claude' titled 'chore: update config', a known worm signature
+[high] .vscode/tasks.json: task with runOn: folderOpen runs when the folder opens
+[high] CLAUDE.md: 2 invisible character(s): hidden text for the agent
+[medium] .claude/setup.mjs: script inside .claude/
+[medium] package.json: preinstall script: node bundle.js
+```
+
+## Why
 
 **Secrets in commits.** The motivating case was one hardcoded bot token in a
 throwaway script, pushed to a repository that was public for two weeks. `.env`
@@ -60,18 +84,22 @@ diff at that moment sees an empty index and lets the commit through. Ours did,
 until a review caught it. Preflight parses the command and scans what the
 `git add` in it is about to stage, untracked files included.
 
-**Irreversible commands.** A wrong `rm -rf`, force push or `git clean` cannot be
-undone, so it should need a second, deliberate step. The other half of the job
-is not getting in the way: a guard that blocks a commit message mentioning
-`rm -rf /` gets switched off within a day, and then it protects nothing.
-
 **Repositories that run code when opened.** The 2025-2026 Shai-Hulud / ChainDrop
 npm worm waves plant a `SessionStart` hook in `.claude/settings.json`, so that
 opening the repository in Claude Code runs the payload, and a `folderOpen` task
 for VS Code ([Elastic Security Labs](https://www.elastic.co/security-labs/shai-hulud-chaindrop-npm-supply-chain),
 [Datadog Security Labs](https://securitylabs.datadoghq.com/articles/npm-worm-compromises-popular-npm-packages/)).
 Agents clone foreign code all the time. `clone_scan` tells the model what would
-run before anyone opens the folder.
+run before anyone opens the folder. The scanner treats the repository as
+hostile: it never follows links, never runs the repository's own git programs,
+and a repository cannot switch it off by crashing one of its checks.
+
+**Irreversible commands.** A wrong `rm -rf`, force push or `git clean` cannot be
+undone, so it should need a second, deliberate step. The other half of the job
+is not getting in the way: a guard that blocks a commit message mentioning
+`rm -rf /` gets switched off within a day, and then it protects nothing. If
+destructive commands are your main worry, see the dedicated projects listed
+below; `safety` is here so that one install covers the basics.
 
 **Browser automation.** In a log of one developer's daily Claude Code work
 (July 21 to October 15, 2026, 2,113 classified failures) the browser gave 191
@@ -131,6 +159,30 @@ Deliberate bypass for a single call: `# pragma: allowlist secret` on a line that
 only looks like a secret (the convention detect-secrets uses), and
 `#browser-ok` in any string field of a browser call. `safety` has no bypass
 marker on purpose: narrow the target, or run the command yourself.
+
+## Related projects
+
+Preflight is not the only guard plugin, and for some jobs another one is the
+better pick.
+
+- **[security-guidance](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance)**
+  (Anthropic, official marketplace) reviews the code Claude writes for
+  vulnerabilities, hardcoded secrets among them, with pattern warnings, a model
+  review of the diff and an agentic review on commit. It uses model calls and
+  feeds its findings back to Claude. Preflight's secret check is a
+  deterministic block with no model calls; the two work side by side.
+- **[destructive_command_guard](https://github.com/Dicklesworthstone/destructive_command_guard)**
+  and **[cc-safety-net](https://github.com/kenryu42/cc-safety-net)** are
+  dedicated, widely used guards against destructive shell and git commands.
+  If that is all you need, they are more mature than Preflight's `safety`.
+- **[spac](https://github.com/seanrobertwright/spac)** is another plugin that
+  blocks commits containing secrets.
+
+What Preflight adds is the secret scan of what a one-command
+`git add ... && git commit` will really record, and the scan of fresh clones
+for code that runs on open. If you run one of the plugins above, turn off the
+overlapping Preflight guard (`PREFLIGHT_SAFETY=0`, see Configuration) so the
+same command is not blocked twice.
 
 ## What it is not
 

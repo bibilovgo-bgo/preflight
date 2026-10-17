@@ -9,7 +9,7 @@
     {
       "name": "preflight",
       "source": "./",
-      "description": "Block secrets in commits and irreversible shell commands; scan fresh clones for code that runs on open."
+      "description": "Block secrets in what a one-command git add && git commit really records; scan fresh clones for code that runs on open."
     }
   ]
 }
