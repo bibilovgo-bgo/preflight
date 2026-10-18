@@ -101,7 +101,7 @@ happened.
   loops that send a file line by line, `echo cmd | sh`, the text of `<<<`
   and unquoted heredoc bodies, commands run through MCP terminal tools.
 
-## feat(config): block edits that weaken a check's configuration
+## 66f4aae feat(config): block edits that weaken a check's configuration
 
 Stage of 18.10.2026, one commit. `guards/config_guard.py`, `config_formats.py`,
 `config_rules.py`, `config_text.py`, `toml_lite.py`; the `Edit|Write|MultiEdit`
