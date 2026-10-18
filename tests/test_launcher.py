@@ -100,6 +100,7 @@ HOOK_CASES = {
         2,
     ),
     "clone_scan": ({"tool_name": "Bash", "tool_input": {"command": "ls"}}, 0),
+    "config_guard": ({"tool_name": "Edit", "tool_input": {"file_path": "pyproject.toml"}}, 0),
 }
 
 

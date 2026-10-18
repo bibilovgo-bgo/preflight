@@ -14,10 +14,12 @@ checks both before the damage is done.
   Claude Code or VS Code: the worm-planted `SessionStart` hooks, `folderOpen`
   tasks, payload-style install scripts, hidden text in `CLAUDE.md`.
 
-Four smaller guards come along: a block on irreversible shell commands, one on
+Five smaller guards come along: a block on irreversible shell commands, one on
 printing private keys or sending secret files over the network, two
-browser-automation checks, and a gate that makes the agent search the tree
-before its first edit of a payment, auth, schema or check-configuration file.
+browser-automation checks, a gate that makes the agent search the tree
+before its first edit of a payment, auth, schema or check-configuration file,
+and a block on edits that weaken a lint, type or test check instead of fixing
+the code it fails on.
 
 | Guard | When | Stops |
 |---|---|---|
@@ -27,6 +29,7 @@ before its first edit of a payment, auth, schema or check-configuration file.
 | `keys` | before `Read`, `Grep`, `Bash`, `PowerShell` | printing a private key into the transcript (`cat ~/.ssh/id_rsa`), sending `.env`, a key or a credentials file over the network (`curl -d @.env`, `cat .env \| nc`); reading `.env` and using keys stay allowed |
 | `browser` | before Claude's browser tools | reading a page right after loading it, `querySelector(...).x` with no null check |
 | `facts` | before `Edit`, `Write`, `MultiEdit`, `NotebookEdit` | the first edit of a money, auth, schema or check-config file until the agent has searched the tree for it (who imports it, which test pins it); everything else passes untouched |
+| `config` | before `Edit`, `Write`, `MultiEdit` | an edit that weakens a check: a code added to ruff's `ignore`, a rule dropped from `select`, `line-length` raised, `-p no:...` or `-k` in `addopts`, `testpaths` narrowed, `strict = false`, coverage `fail_under` lowered, `continue-on-error: true` or `\|\| true` in CI, a pre-commit hook removed, `skip` in `conftest.py`; tightening and new config files pass |
 
 Plus a command for folders you did not clone: `/preflight:scan path/to/folder`.
 
@@ -206,7 +209,8 @@ auth is `auth`, `authn`, `authz`, `login`, `oauth`, `sso`, `session(s)`,
 any `.sql` or `.prisma`, and a code file under `schema(s)` or `models` when
 the edit itself talks to a database (`Column(`, `models.Model`, DDL): a
 pydantic request model or a neural network in those folders is not a schema;
-check configuration is `pyproject.toml`, `ruff.toml`, `setup.cfg`, `pytest.ini`,
+check configuration is `pyproject.toml`, `ruff.toml`, `.ruff.toml`, `setup.cfg`,
+`pytest.ini`, `tox.ini`, `mypy.ini`, `.coveragerc`, `.flake8`, `.pylintrc`,
 `conftest.py`, `.eslintrc*`, `eslint.config.*`, `.prettierrc*`,
 `tsconfig*.json`, `.pre-commit-config.yaml`, `.github/workflows/*`,
 `hooks.json` and a `Makefile` with a `test` or `lint` target. When the path
@@ -234,6 +238,58 @@ from a previous turn. Only the model's own tool calls are read: the text of a
 tool result is never evidence. Two hook processes of one session merge their
 memory instead of overwriting each other.
 
+**config** reads the file as it is on disk and as it would be after the edit,
+and compares the two: an agent whose lint or test run fails can fix the code
+or edit the check, and the second is quicker. It covers `pyproject.toml`
+(only the `[tool.*]` tables of ruff, black, isort, mypy, pytest, coverage,
+pyright, pylint, flake8, bandit; packaging keys are not a check), `ruff.toml`,
+`setup.cfg` and `tox.ini` (their check sections), `.flake8`, `pytest.ini`,
+`mypy.ini`, `.coveragerc`, `.pylintrc`, `pyrightconfig.json`, `conftest.py`
+anywhere (also under `tests/`), `.pre-commit-config.yaml` and
+`.github/workflows/*.yml`. TOML, INI and JSON are compared setting by
+setting. Lists and commands are pooled per tool: `[tool.ruff]` and
+`[tool.ruff.lint]`, `ignore` and `extend-ignore`, `select` and
+`extend-select`, every tox environment hold one setting each, so the migration
+ruff asks for, a split or a move between tox environments is not a change. A
+code covered by a wider one (`E` covers `E501`, `ALL` covers everything)
+counts as neither new nor lost. Blocked: a new entry in `ignore`,
+`per-file-ignores`, `exclude`, `omit`, `disable` (a replaced entry counts as
+new: `exclude = ["build"]` to `["dist"]` stops checking `dist`), an entry gone
+from `select`, `testpaths` or `include`, a raised `line-length` or `max-*`
+limit, a lowered or removed `fail_under`, a strict flag (`strict`,
+`disallow_*`, `warn_*`, `xfail_strict`, coverage `branch`) switched off, a lax
+one (`ignore_missing_imports`, `ignore_errors`, `ignore_outcome`) switched on,
+a mypy override that gains a module, pyright's `typeCheckingMode` lowered or,
+in strict mode, a `report*` rule set below `error`, `filterwarnings` gaining
+an `ignore` or losing an `error` that no other filter covers. Command values
+(`addopts`, tox `commands`), workflows and pre-commit hooks are compared as
+text, with `\` continuations joined: `set +e`, `--no-verify`,
+`continue-on-error: true`, `if: false` and `SKIP=` anywhere; `|| true`,
+`--exit-zero` and `--ignore=`/`--exclude=` on a line that runs a check tool
+(not on `rsync` or `rm`); after `pytest` also `-k`, `-m`, `--deselect`,
+`-W ignore`, `--lf` and `-p no:...` (not for plugins that change no verdict,
+such as `cacheprovider`, `randomly` or `xdist`) count when they become more
+frequent. In a workflow, an edit that only adds lines adds a check, so a new
+`pytest -m integration` job passes while `-m fast` put on the existing run
+does not. `--check`, `--strict`, `set -e` and `-W error` count when they
+become rarer; `--max-line-length` raised and `--cov-fail-under` lowered; a
+check tool (pytest, ruff, mypy, eslint, `go test`, `npm test`...) that no
+longer runs anywhere in the file (`pip install -e . && pytest` still runs
+pytest); a pre-commit hook that left (a rename that keeps the stem as a word,
+`ruff` to `ruff-check` or `lint` to `ruff-lint`, did not), a new hook
+`exclude:` or `stages: [manual]`. In `conftest.py`, a new `pytest.skip(`,
+`mark.skip`, `xfail`, `collect_ignore` or a warnings filter set to ignore.
+Comments and the `name:` of a step are prose and never count. Warning actions
+are read the way Python reads them, so `i::DeprecationWarning` and `-W i` are
+ignores. `pyrightconfig.json` may carry the comments and trailing commas
+pyright accepts. A file the guard could not parse before the edit passes; an
+edit that leaves a parsable file unparsable is blocked, because the next edit
+would then weaken it unseen. So is an edit of a check configuration over
+1 MiB, before or after: a hook that cannot finish in time lets the edit
+through, so the guard refuses to try rather than fail quietly. Text taken from
+the file is cut to 160 characters per line and 20 lines, without control
+characters, before the model reads it.
+
 ## Configuration
 
 Everything is an environment variable, so it can live in your shell profile or
@@ -242,10 +298,11 @@ in the `env` block of `~/.claude/settings.json`.
 | Variable | Effect |
 |---|---|
 | `PREFLIGHT=0` | turn every guard off |
-| `PREFLIGHT_SAFETY=0`, `PREFLIGHT_SECRETS=0`, `PREFLIGHT_KEYS=0`, `PREFLIGHT_BROWSER=0`, `PREFLIGHT_CLONE_SCAN=0`, `PREFLIGHT_FACTS=0` | turn one guard off |
+| `PREFLIGHT_SAFETY=0`, `PREFLIGHT_SECRETS=0`, `PREFLIGHT_KEYS=0`, `PREFLIGHT_BROWSER=0`, `PREFLIGHT_CLONE_SCAN=0`, `PREFLIGHT_FACTS=0`, `PREFLIGHT_CONFIG=0` | turn one guard off |
 | `PREFLIGHT_BROWSER_SETTLE=5` | seconds a page needs after loading (default 3) |
 | `PREFLIGHT_FACTS_EXEMPT=src/legacy/*;vendor/*` | file globs the facts gate never asks about (`;`-separated, matched against the project-relative path and the file name) |
 | `PREFLIGHT_FACTS_MAX_DENIALS=1` | denials per file and session before the edit passes with a note (default 2) |
+| `PREFLIGHT_CONFIG_EXEMPT=tox.ini;legacy/*` | file globs the config guard never blocks (same matching as the facts exemptions, set separately) |
 | `PREFLIGHT_LOG=1` | append each block to `~/.claude/plugins/data/<plugin>/log/<guard>.jsonl` (off by default; file names and rule labels only, never values) |
 
 Deliberate bypass for a single call: `# pragma: allowlist secret` on a line that
@@ -253,7 +310,11 @@ only looks like a secret (the convention detect-secrets uses), and
 `#browser-ok` in any string field of a browser call. `safety` has no bypass
 marker on purpose: narrow the target, or run the command yourself. `facts` has
 none either, because anything typed into the edit would land in the file:
-search, or exempt the path.
+search, or exempt the path. `config` has no marker and no cap on denials for
+the same reason and one more: its block is a fact about the edit, not a
+question, and a model asked twice learns to answer "noted". When a rule really
+is wrong, the user lifts the block with `PREFLIGHT_CONFIG_EXEMPT` or
+`PREFLIGHT_CONFIG=0`.
 
 ## Related projects
 
@@ -301,6 +362,27 @@ edits to one file, the first is denied and its siblings go through: send
 dependent edits to a gated file one at a time. Two hook processes of one
 session can still race between reading and writing their memory; the merge
 narrows the window, it does not close it.
+
+The `config` guard reads Python and GitHub configuration only. ESLint,
+Prettier, Jest, Vitest, Biome and `tsconfig*.json` (JavaScript or JSON with
+comments), `Makefile` and `.gitlab-ci.yml` are not covered. Workflows and
+pre-commit configs are read line by line, not parsed as YAML: a check step
+removed while the same tool still runs in another step, a multi-line
+`exclude: |` block that grows, a folded `run: >` command, and a hook renamed
+to a new stem are not seen; replacing one tool with another (`black` with
+`ruff format`) reads as the first one no longer running, and is blocked on
+purpose. A code moved from the global ruff `ignore` into `per-file-ignores`
+narrows the ignore but reads as a new per-file entry and is blocked. Pooling
+by tool means a list entry added to one `[[tool.mypy.overrides]]` table that
+the global `[tool.mypy]` already had is not seen. A new `line-length` key is judged against
+the tool's default only for ruff, black, flake8, pycodestyle and pylint.
+Reading text as words has its edges: `echo pytest` counts as running pytest,
+`if: ${{ 1 == 2 }}` is not recognised as a disabled step, an option and its
+value on two lines of a YAML block list (`- --ignore` then `- E501`) are not
+paired, and an unbalanced quote in a shell line keeps a `#` comment after it
+from being dropped. Inline suppressions in code
+(`# noqa`, `# type: ignore`, `eslint-disable`) are out of scope, and a config
+edited through `sed` or a script in a shell is a shell command, not an edit.
 
 Every guard fails open: if its input is unreadable, git is missing or anything
 inside the guard breaks, the tool call goes through. A guard that breaks your

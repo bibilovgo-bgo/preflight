@@ -100,3 +100,80 @@ happened.
 - Not covered by design, documented in README: paths held in variables,
   loops that send a file line by line, `echo cmd | sh`, the text of `<<<`
   and unquoted heredoc bodies, commands run through MCP terminal tools.
+
+## feat(config): block edits that weaken a check's configuration
+
+Stage of 18.10.2026, one commit. `guards/config_guard.py`, `config_formats.py`,
+`config_rules.py`, `config_text.py`, `toml_lite.py`; the `Edit|Write|MultiEdit`
+hook; `fact_classes.exempt_globs(variable)` and `matches_globs`; five names
+added to `CONFIG_NAMES`; `_common.log` also swallows `ValueError`. 1619 tests
+(was 1273), 336 of them for this guard. The idea is config-protection's (ECC,
+MIT); scope chosen by the owner: Python and GitHub files, line-based YAML, no
+cap and no marker, a replaced exclude entry counts as weaker.
+
+- Mutation runs, in four parallel clones (one per module) plus a spec of
+  manual mutants (`scripts/config_mutants.py`, 20 at the end):
+  - Round 1: 95 survivors of 554. Gaps closed with tests (ranks, defaults,
+    `|| exit 0`, `-W`, `go test`, the install-line exemption, in-process
+    early exits that a hook process would hide behind its crash net); dead
+    code removed (`lower`/`strip` on keys already normalised, `if sep`, the
+    bool branch of `as_bool`, guards in `as_num` and `command_text`). One was
+    a logic flaw: with two `--cov-fail-under` values, lowering one went
+    unseen; values are now paired.
+  - Round 2: 19 survivors of 530; 4 gaps closed, the rest equivalent
+    (`tomllib` parity by design, implicit `return None`, bounds in
+    `toml_lite` that an `IndexError` already turns into an error).
+  - Round 3, on the review fixes: 38 of 563, none in `config_guard.py`; gaps
+    closed (every key family, pools never shared between tools, `tests/`
+    covering `tests/unit`, `--no-verify`, a `\` without a space, a comment
+    at column 0, a `repo:` line), the bool guard in `judge` and the
+    `starts` set of hook renames removed as dead.
+  - Spec: 19 of 20 killed; `directories-read` is equivalent on Windows (a
+    directory does not open) and is killed on Linux by the FIFO test.
+  - Seven `^\s*-?\s*` patterns were quadratic on long lines and were
+    rewritten before any review; a test feeds 200 000-character lines.
+- Live run, first pass: the weakening of a `pyproject.toml` went THROUGH.
+  Windows PowerShell 5.1 writes `Set-Content -Encoding utf8` with a BOM, the
+  TOML reader refused the file, and the guard failed open. Fixed (`normal`),
+  with a test; the later runs block the `ignore` edit, pass `line-length`
+  100 -> 88, block `collect_ignore` in `tests/conftest.py`.
+- Code review (Sonnet, 16 findings, all confirmed by probes, all fixed with
+  a regression test each in `tests/test_config_review.py`). The heaviest
+  were false blocks: the `[tool.ruff]` to `[tool.ruff.lint]` migration ruff
+  asks for, `ignore` to `extend-ignore`, a mypy override whose module list
+  was reordered, `select = ["ALL"]`, `pip install -e . && pytest`, `rsync
+  --exclude`, `-p no:cacheprovider`, a new `pytest -m integration` job, a
+  report rule set to its own default, a tox command moved between
+  environments. Lists are now pooled per tool and key family, a code covered
+  by a wider one is neither new nor lost, exclusion flags count only on a
+  line that runs a check tool, a workflow edit that only adds lines may add
+  pytest options. Misses fixed: `\` continuations, flake8 per-file codes on
+  continuation lines, TOML times in the 3.9 reader.
+- Security review (Sonnet, confirmed by probes; a hook past its timeout lets
+  the edit through, so every slow input was a bypass), all fixed with tests
+  in `tests/test_config_security.py`: the guard went blind on a file over
+  1 MiB and on the break-weaken-repair sequence (both now block); four
+  super-linear paths (`covered`, `judge_filters`, hook renames, the `set +e`
+  regex, `\` continuations) over 10 s; a `replace_all` that needed
+  gigabytes; file text with newlines and ESC copied into the message (now
+  cut and cleaned); a lone surrogate in a logged path lost the block; a
+  symlink to a share would be followed (link targets are read, not
+  opened). Evasions fixed: JSON with comments in `pyrightconfig.json`,
+  prefixes that crossed a code or path boundary (`D` covered `DTZ`, `build`
+  covered `build*`, `tests` covered `tests/../src`), shortened warning
+  actions (`i::`, `-W i`), `continue-on-error: True` and flow mappings,
+  pre-commit `args` as a list, a quoted `#`, `skip (`, `from pytest import
+  skip`, removing flake8's `max-complexity`.
+
+### Deferred
+
+- Not covered by design, in the README: JavaScript configs, `Makefile`,
+  `.gitlab-ci.yml`, `tsconfig*.json`; a check step removed while the tool
+  still runs elsewhere; `exclude: |` blocks and folded `run: >`; `echo
+  pytest`; `if: ${{ 1 == 2 }}`; a YAML block list that splits an option from
+  its value; a code moved from the global ruff `ignore` into
+  `per-file-ignores` is blocked though it narrows; an entry added to one
+  mypy override that the global section already had is not seen.
+- Measure after two weeks of use with `PREFLIGHT_LOG=1`: blocks per rule
+  label, and how many of them the user lifted with an exemption. A label
+  that is mostly lifted is a false block to fix.

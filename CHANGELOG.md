@@ -2,7 +2,7 @@
 
 ## 0.1.0 (unreleased)
 
-First version: six guards and a scan command.
+First version: seven guards and a scan command.
 
 - `safety`: blocks recursive deletes of a root, home, current, parent or system
   directory, SQL DROP / TRUNCATE / unconditional DELETE through a database
@@ -35,6 +35,32 @@ First version: six guards and a scan command.
   GateGuard's (ECC, MIT): deny first, force the facts, allow the retry. Three
   mutation rounds, a code review (17 findings, 16 fixed) and a security review
   (a network path was stat'ed before the edit: fixed) — see `docs/REVIEWS.md`.
+- `config`: blocks an `Edit`, `Write` or `MultiEdit` that weakens a lint,
+  type or test check instead of fixing the code it fails on. The file is read
+  from disk and compared with what the edit would make of it: TOML (with
+  `tomllib`, or a small reader of the same grammar on Python 3.9 and 3.10), INI
+  and JSON key by key; command values, workflows and pre-commit hooks line by
+  line; `conftest.py` by its skips. A new `ignore`, `per-file-ignores` or
+  `exclude` entry (a replaced one counts), a rule gone from `select`, a raised
+  `line-length`, a lowered `fail_under`, `strict` switched off, `-p no:` or
+  `-k` in `addopts`, a narrowed `testpaths`, `continue-on-error: true` or
+  `|| true` in CI, a removed pre-commit hook, a check tool that no longer runs:
+  blocked, with the recipe "fix the code the check fails on, or say in the
+  commit why the rule is wrong". Lists are pooled per tool, so the
+  `[tool.ruff]` to `[tool.ruff.lint]` migration, `ignore` to `extend-ignore`
+  and a move between tox environments are not changes, and a code covered by a
+  wider one (`E` for `E501`, `ALL`) is neither new nor lost. Tightening, new
+  config files and a file that was already unparsable pass; an edit that makes
+  a file unparsable, or touches one over 1 MiB, is blocked. No cap and no
+  marker: `PREFLIGHT_CONFIG=0` or `PREFLIGHT_CONFIG_EXEMPT`. Python and GitHub
+  files only; JavaScript configs, `Makefile` and `.gitlab-ci.yml` are not
+  covered. Three mutation rounds, a code review (16 findings) and a security
+  review (6 groups of findings, among them four inputs that ran the hook past
+  its timeout, which lets the edit through): all fixed, see `docs/REVIEWS.md`.
+  The idea is config-protection's (ECC, MIT), which blocks every edit of a
+  linter config; this one blocks only the weakening. The `facts` gate now asks
+  about `.ruff.toml`, `.mypy.ini`, `.coveragerc`, `pylintrc` and
+  `.pre-commit-config.yml` too, the same names the config guard reads.
 - `clone_scan`: after a clone, reports to the model what in the repository runs
   when the folder is opened; never follows links, never runs the repository's
   programs, never lets a failing check go silent.

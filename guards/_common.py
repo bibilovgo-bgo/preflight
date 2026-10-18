@@ -109,7 +109,7 @@ def log(guard: str, record: dict) -> None:
         line = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), **record}
         with (folder / f"{guard}.jsonl").open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(line, ensure_ascii=False) + "\n")
-    except OSError:
+    except (OSError, ValueError):  # a lone surrogate from a non-UTF-8 path cannot be encoded
         pass
 
 

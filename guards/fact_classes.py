@@ -52,8 +52,9 @@ INSTRUCTION_NAMES = frozenset(
 )
 INSTRUCTION_DIRS = frozenset({".claude", ".cursor", ".codex", ".opencode", ".gemini"})
 CONFIG_NAMES = frozenset(
-    "pyproject.toml ruff.toml setup.cfg pytest.ini tox.ini mypy.ini conftest.py "
-    ".pre-commit-config.yaml .gitlab-ci.yml hooks.json .flake8 .pylintrc pyrightconfig.json "
+    "pyproject.toml ruff.toml .ruff.toml setup.cfg pytest.ini tox.ini mypy.ini .mypy.ini "
+    "conftest.py .coveragerc pylintrc .pre-commit-config.yaml .pre-commit-config.yml "
+    ".gitlab-ci.yml hooks.json .flake8 .pylintrc pyrightconfig.json "
     "jest.config.js jest.config.ts vitest.config.ts vitest.config.js .editorconfig".split()
 )
 CONFIG_PATTERNS = (".eslintrc*", "eslint.config.*", ".prettierrc*", "tsconfig*.json")
@@ -150,9 +151,16 @@ def _strip_worktree(rel: str, root: Path) -> str:
     return rel
 
 
-def exempt_globs() -> list[str]:
-    raw = os.environ.get("PREFLIGHT_FACTS_EXEMPT", "")
+def exempt_globs(variable: str = "PREFLIGHT_FACTS_EXEMPT") -> list[str]:
+    raw = os.environ.get(variable, "")
     return [g.strip().replace("\\", "/") for g in raw.split(";") if g.strip()]
+
+
+def matches_globs(rel: str, globs: list[str]) -> bool:
+    """An operator glob against the project-relative path or the bare file name."""
+    name = rel.rsplit("/", 1)[-1]
+    lowered = [g.lower() for g in globs]
+    return any(fnmatch.fnmatchcase(rel, g) or fnmatch.fnmatchcase(name, g) for g in lowered)
 
 
 def is_exempt(rel: str, globs: list[str]) -> bool:
@@ -166,8 +174,7 @@ def is_exempt(rel: str, globs: list[str]) -> bool:
         return True
     if dirs & INSTRUCTION_DIRS or name == ".claude.json":
         return True  # settings, hooks, skills and worktrees of the agent itself
-    lowered = [g.lower() for g in globs]
-    return any(fnmatch.fnmatchcase(rel, g) or fnmatch.fnmatchcase(name, g) for g in lowered)
+    return matches_globs(rel, globs)
 
 
 def is_secret(name: str) -> bool:
