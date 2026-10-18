@@ -43,9 +43,9 @@ remote commands.
   `shell_pipes.py` or `safety_guard.py`. (The facts stage below only imports
   them, so it did not trigger this.)
 
-## facts: the facts gate (fact_gate, fact_classes, search_credit, transcript_turn)
+## 6b9eed0 feat(facts): fact gate for money, auth, schema and check-config edits
 
-Stage of 18.10.2026, one commit (named by hash in CHANGELOG once squashed).
+Stage of 18.10.2026, one commit.
 `guards/fact_gate.py`, `fact_classes.py`, `search_credit.py`,
 `transcript_turn.py`, the `Edit|Write|MultiEdit|NotebookEdit` hook; 1273
 tests (was 972). The idea is GateGuard's (ECC, MIT): deny the first edit of a
