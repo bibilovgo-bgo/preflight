@@ -71,6 +71,7 @@ def test_every_guard_is_wired():
         "safety_guard",
         "secret_scan",
         "key_guard",
+        "fact_gate",
         "browser_guard",
         "clone_scan",
     }

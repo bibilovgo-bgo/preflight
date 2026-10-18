@@ -2,7 +2,7 @@
 
 ## 0.1.0 (unreleased)
 
-First version: five guards and a scan command.
+First version: six guards and a scan command.
 
 - `safety`: blocks recursive deletes of a root, home, current, parent or system
   directory, SQL DROP / TRUNCATE / unconditional DELETE through a database
@@ -23,6 +23,18 @@ First version: five guards and a scan command.
   Network paths are never opened.
 - `browser`: blocks reading a page right after loading it, and DOM property
   reads that throw on a missing element.
+- `facts`: denies the first `Edit`, `Write` or `NotebookEdit` of a money, auth,
+  schema or check-configuration file with the facts to show (importers and
+  callers, the test that pins the numbers, the rollback, the check being
+  weakened), and lets the retry through once a search of the tree for the
+  file (`Grep`, `Glob`, `rg`, `grep`, `git grep`, `find`, `fd`,
+  `Select-String`) completed in the current turn; two denials per file and
+  session at most, then the edit passes with a note. Tests, prose, agent
+  instruction files, Claude Code settings and secret files are never gated;
+  no state is written about files outside the four classes. The idea is
+  GateGuard's (ECC, MIT): deny first, force the facts, allow the retry. Three
+  mutation rounds, a code review (17 findings, 16 fixed) and a security review
+  (a network path was stat'ed before the edit: fixed) — see `docs/REVIEWS.md`.
 - `clone_scan`: after a clone, reports to the model what in the repository runs
   when the folder is opened; never follows links, never runs the repository's
   programs, never lets a failing check go silent.

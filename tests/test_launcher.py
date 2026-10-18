@@ -95,6 +95,10 @@ HOOK_CASES = {
         {"tool_name": "mcp__Claude_Browser__find", "tool_input": {}, "session_id": "s"},
         0,
     ),
+    "fact_gate": (
+        {"tool_name": "Edit", "tool_input": {"file_path": "payments/x.py"}, "session_id": "s"},
+        2,
+    ),
     "clone_scan": ({"tool_name": "Bash", "tool_input": {"command": "ls"}}, 0),
 }
 

@@ -14,9 +14,10 @@ checks both before the damage is done.
   Claude Code or VS Code: the worm-planted `SessionStart` hooks, `folderOpen`
   tasks, payload-style install scripts, hidden text in `CLAUDE.md`.
 
-Three smaller guards come along: a block on irreversible shell commands, one on
-printing private keys or sending secret files over the network, and two
-browser-automation checks.
+Four smaller guards come along: a block on irreversible shell commands, one on
+printing private keys or sending secret files over the network, two
+browser-automation checks, and a gate that makes the agent search the tree
+before its first edit of a payment, auth, schema or check-configuration file.
 
 | Guard | When | Stops |
 |---|---|---|
@@ -25,6 +26,7 @@ browser-automation checks.
 | `safety` | before `Bash` / `PowerShell` | `rm -rf ~`, `Remove-Item -Recurse -Force C:\`, `DROP TABLE` through a DB client, `git push --force`, `git reset --hard origin/...`, `git clean -fd`, `mkfs` or `dd` onto a disk |
 | `keys` | before `Read`, `Grep`, `Bash`, `PowerShell` | printing a private key into the transcript (`cat ~/.ssh/id_rsa`), sending `.env`, a key or a credentials file over the network (`curl -d @.env`, `cat .env \| nc`); reading `.env` and using keys stay allowed |
 | `browser` | before Claude's browser tools | reading a page right after loading it, `querySelector(...).x` with no null check |
+| `facts` | before `Edit`, `Write`, `MultiEdit`, `NotebookEdit` | the first edit of a money, auth, schema or check-config file until the agent has searched the tree for it (who imports it, which test pins it); everything else passes untouched |
 
 Plus a command for folders you did not clone: `/preflight:scan path/to/folder`.
 
@@ -62,6 +64,28 @@ Move the value to an untracked .env (or a secret store) and unstage the file wit
 
 Claude Code hands this to the model as the reason the call was blocked. Nothing
 was committed, and the key never appears in the transcript in full.
+
+The `facts` gate reads differently: it is not a block, it is a question. This
+is what the model gets on its first edit of `src/payments/charge.py`:
+
+```
+preflight facts: first edit of a money path (src/payments/charge.py), show the facts first
+  - who reads charge: search the tree for its importers and callers (Grep/rg)
+  - where every amount comes from, its currency and rounding, and which store it is written to
+  - which test pins the current numbers (search tests/ for charge), or say there is none
+  - quote the user's current instruction verbatim
+
+Then retry the edit. Reading the file does not count; a search does.
+```
+
+Asking a model "are you sure?" gets "yes". Asking it to list the importers
+makes it run a search, and the search changes what it does next. The retry
+passes once a `Grep`, `Glob`, `rg`, `grep`, `git grep`, `find` or `fd` in the
+current turn looked for the file's name (or the table, or the symbol being
+edited); in the same live session, after `rg charge .` the same edit went
+through with the note `facts: payments/charge.py credited by rg 'charge .'`.
+After two denials without a search the edit passes with a note, so the gate
+can never hold an edit for good.
 
 And this is what `/preflight:scan` printed for a test repository built the way
 the worm reports describe:
@@ -173,6 +197,43 @@ as hostile: links are never followed, every read is capped, git runs with the
 repository's program-running config overridden, and a check that fails or runs
 out of time is itself a `high` finding saying the scan is incomplete.
 
+**facts** classes a file by a whole path segment, never by a substring:
+`src/payments/charge.py` is money, `lib/paymentutils.py` is not. Money is
+`payment(s)`, `billing`, `invoice(s)`, `checkout`, `pricing`, `ledger`,
+`treasury`, `revenue`, `wallet`, `subscription(s)`, `refund(s)`, `payout(s)`;
+auth is `auth`, `authn`, `authz`, `login`, `oauth`, `sso`, `session(s)`,
+`permissions`, `acl`, `rbac`, `security`; schema is `migrations`, `alembic`,
+any `.sql` or `.prisma`, and a code file under `schema(s)` or `models` when
+the edit itself talks to a database (`Column(`, `models.Model`, DDL): a
+pydantic request model or a neural network in those folders is not a schema;
+check configuration is `pyproject.toml`, `ruff.toml`, `setup.cfg`, `pytest.ini`,
+`conftest.py`, `.eslintrc*`, `eslint.config.*`, `.prettierrc*`,
+`tsconfig*.json`, `.pre-commit-config.yaml`, `.github/workflows/*`,
+`hooks.json` and a `Makefile` with a `test` or `lint` target. When the path
+says nothing, the text of the edit may, and the old text counts as much as
+the new (an edit that removes `@login_required` is the one to ask about):
+`CREATE TABLE`, `op.add_column(`, `Column(` make it schema; `password`,
+`check_password`, `verify=False`, `@login_required` make it auth; two amount
+words (`price`, `total`, `balance`, `fee`…) next to arithmetic, or one next
+to a currency, `Decimal(`, `round(` or a database write, make it money
+(`average = total / count` does not). The path is judged at its real location
+too, so a symlink into `auth/` counts. Tests (`test_*.py`, `*_test.go`,
+`*.spec.ts`…), prose, agent instruction files (`CLAUDE.md`, `SKILL.md`,
+anything under `.claude/`), Claude Code settings and secret files (those
+belong to `keys`) are never gated. Creating a new check-configuration file
+passes with a note: there is nothing to weaken yet. A search credits the file
+when the file's stem (or the symbol being edited when the stem is generic
+like `models`, or the folder name when there is neither) is a whole word of
+the pattern: `payment` credits `payment.py`, `payments` does not. `git -C dir
+grep`, searches inside `bash -c '...'` and a search fed by a tree listing
+(`gci -r | sls x`, `find . | grep x`) count; a search restricted to other
+names (`rg -g '*.js'` for a `.py` file), excluding the file, or confined to
+the file's own name (`Glob **/charge.py`) does not, and neither does a search
+sent in the same message as the edit, one whose result was an error, or one
+from a previous turn. Only the model's own tool calls are read: the text of a
+tool result is never evidence. Two hook processes of one session merge their
+memory instead of overwriting each other.
+
 ## Configuration
 
 Everything is an environment variable, so it can live in your shell profile or
@@ -181,14 +242,18 @@ in the `env` block of `~/.claude/settings.json`.
 | Variable | Effect |
 |---|---|
 | `PREFLIGHT=0` | turn every guard off |
-| `PREFLIGHT_SAFETY=0`, `PREFLIGHT_SECRETS=0`, `PREFLIGHT_KEYS=0`, `PREFLIGHT_BROWSER=0`, `PREFLIGHT_CLONE_SCAN=0` | turn one guard off |
+| `PREFLIGHT_SAFETY=0`, `PREFLIGHT_SECRETS=0`, `PREFLIGHT_KEYS=0`, `PREFLIGHT_BROWSER=0`, `PREFLIGHT_CLONE_SCAN=0`, `PREFLIGHT_FACTS=0` | turn one guard off |
 | `PREFLIGHT_BROWSER_SETTLE=5` | seconds a page needs after loading (default 3) |
+| `PREFLIGHT_FACTS_EXEMPT=src/legacy/*;vendor/*` | file globs the facts gate never asks about (`;`-separated, matched against the project-relative path and the file name) |
+| `PREFLIGHT_FACTS_MAX_DENIALS=1` | denials per file and session before the edit passes with a note (default 2) |
 | `PREFLIGHT_LOG=1` | append each block to `~/.claude/plugins/data/<plugin>/log/<guard>.jsonl` (off by default; file names and rule labels only, never values) |
 
 Deliberate bypass for a single call: `# pragma: allowlist secret` on a line that
 only looks like a secret (the convention detect-secrets uses), and
 `#browser-ok` in any string field of a browser call. `safety` has no bypass
-marker on purpose: narrow the target, or run the command yourself.
+marker on purpose: narrow the target, or run the command yourself. `facts` has
+none either, because anything typed into the edit would land in the file:
+search, or exempt the path.
 
 ## Related projects
 
@@ -225,6 +290,17 @@ line by line in a loop, a path or a directory held in a variable
 an MCP terminal tool instead of `Bash` or `PowerShell` are not seen at all. For isolation use
 Claude Code's sandbox and permission rules; use Preflight so that the classic
 accidents need a second, deliberate step.
+
+The `facts` gate is deliberately small next to the gates it took the idea
+from. It does not scope a shell search by its path operands (`rg charge docs`
+credits `src/charge.py`), does not know every tool's type and exclusion
+grammar, does not credit a new file by a search of its directory, does not
+tell a subagent from the main session, and sees edits made through `sed` or
+`python -` in a shell as shell commands, not as edits. In a parallel batch of
+edits to one file, the first is denied and its siblings go through: send
+dependent edits to a gated file one at a time. Two hook processes of one
+session can still race between reading and writing their memory; the merge
+narrows the window, it does not close it.
 
 Every guard fails open: if its input is unreadable, git is missing or anything
 inside the guard breaks, the tool call goes through. A guard that breaks your
