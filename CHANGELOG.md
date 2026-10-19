@@ -67,9 +67,8 @@ First version: seven guards and a scan command.
 - `/preflight:scan <folder>`: the same scan for a folder that was not cloned.
 
 The `keys` guard and the safety unwrapping went through two mutation runs and
-three reviews (see `docs/REVIEWS.md`). The fixes from the third review are in
-the code but have no dedicated regression tests yet; that is the first task of
-the next stage that touches these guards.
+three reviews (see `docs/REVIEWS.md`). Each fix of the third review has a
+regression test of its own in `tests/test_review3_regressions.py`.
 
 An Edit guard was built and removed before release: a live test showed that
 current Claude Code rejects drifted, ambiguous and no-op Edit anchors itself,
