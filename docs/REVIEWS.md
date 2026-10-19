@@ -38,10 +38,10 @@ remote commands.
 
 ### Deferred
 
-- Regression tests for the review 3 fixes. Must be written before the first
-  line of the next stage that touches `guards/key_*`, `secret_files.py`,
-  `shell_pipes.py` or `safety_guard.py`. (The facts stage below only imports
-  them, so it did not trigger this.)
+- ~~Regression tests for the review 3 fixes.~~ Closed 20.10.2026 by `773f15d`
+  (`tests/test_review3_regressions.py`, one test per fix). The fixes shipped
+  inside `313128b`, so each was reverted by hand in a clone: every test of it
+  failed there and passes on the real code.
 
 ## 6b9eed0 feat(facts): fact gate for money, auth, schema and check-config edits
 
